@@ -2,3 +2,7 @@
 
 # Phase 2: downloaded ONNX models (see assets/models/README.md)
 assets/models/*.onnx
+
+# Phase 2a: captured test fixtures (README.md is committed)
+assets/test/*
+!assets/test/README.md

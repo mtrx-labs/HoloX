@@ -103,3 +103,92 @@ controlled by hand gestures via a webcam (Linux, Vulkan rendering).
 - Real hand tracking (`palm_detector.rs` + `hand_landmarks.rs`) — Phase 2+.
 - ONNX/MediaPipe models, calibration tooling, 60 FPS verification,
   live verification of the debug preview — later.
+
+## Phase 2a — Palm detection verified on static frames
+
+### Task 1 — Model introspection results (recorded 2026-11-24)
+
+Introspected with the throwaway tool `src/bin/inspect_models.rs` (deleted after
+recording — the deliverables below are in NOTES.md and the code):
+
+```
+=== assets/models/palm_detection_mediapipe_2023feb.onnx
+layer_names (count=75)
+unconnected_out_layers (count=2): Identity, Identity_1
+blob at input 192: dims=4 rows=-1 cols=-1 total=110592 typ=5 depth=5
+  output Identity: dims=3 rows=-1 cols=-1 total=36288 typ=5 depth=5
+  output Identity_1: dims=3 rows=-1 cols=-1 total=2016 typ=5 depth=5
+=== assets/models/handpose_estimation_mediapipe_2023feb.onnx
+layer_names (count=59)
+unconnected_out_layers (count=4): Identity, Identity_1, Identity_2, Identity_3
+blob at input 192: dims=4 rows=-1 cols=-1 total=110592 typ=5 depth=5
+  output Identity: dims=2 rows=1 cols=63 total=63 typ=5 depth=5
+  output Identity_1: dims=2 rows=1 cols=1 total=1 typ=5 depth=5
+  output Identity_2: dims=2 rows=1 cols=1 total=1 typ=5 depth=5
+  output Identity_3: dims=2 rows=1 cols=63 total=63 typ=5 depth=5
+```
+
+Notes:
+- `typ=5` = CV_32F (depth 5); all outputs are 32-bit floats.
+- Blob at 192: `[1, 3, 192, 192]` (1×3×192×192 = 110592, NCHW). The palm
+  model runs forward with this via `blob_from_image`. The official Python demo
+  passes `[1, 192, 192, 3]` (NHWC); both are documented, and the Rust decoder
+  uses the NHWC variant via `Image2BlobParams` (`scalefactor = 1/255`,
+  `datalayout = DNN_LAYOUT_NHWC`, ddepth CV_32F).
+- Palm model: `Identity` = regression output (total 36288 = 2016 × 18);
+  `Identity_1` = score output (total 2016).
+- Handpose model (for Phase 2b): two 63-element outputs (landmarks; the other
+  63 = world landmarks) plus two size-1 outputs (presence + handedness).
+
+### Task 3 — Anchor generation (verified against introspection)
+
+Constants (matching GenMediaPipePalmDectionSSDAnchors — the repo page says
+this model "outputs 2016x18"):
+
+- `num_layers = strides.len() = 4`, `strides = [8, 16, 16, 16]`
+- `aspect_ratios = [1.0, 0.5]`
+- `offset = 0.5`, `fixed_anchor_size = true`
+- `min_scale = 0.1484375`, `max_scale = 0.75`
+- `generate_anchors(...).len() == 2016` — asserted in the unit test
+  `generate_anchors_matches_introspection` (`src/vision/palm_detector.rs`).
+
+### Task 4 — Decode (port of `mp_palmdet.py::_postprocess`)
+
+Faithful port of OpenCV's official demo (non-exponential regression):
+
+- `x1 = (delta_cx/input_size - delta_w/(2·input_size) + anchor.cx) · scale − pad_bias_x`
+- `x2 = (delta_cx/input_size + delta_w/(2·input_size) + anchor.cx) · scale − pad_bias_x`
+- keypoints: `k = (delta/input_size + anchor) · scale − pad_bias`
+- NMS at IoU 0.3, highest-scoring box kept (`PalmDetector::detect`).
+- `scale = max(w, h)` of the original frame; `pad_bias` from the preprocessing
+  padding.
+
+### Task 5 — Fixtures + `palm_test` results (honest report)
+
+- `cargo run --release --bin grab_frames` → 10 PNGs in `assets/test/`
+  (see `assets/test/README.md` and the `ls -la assets/test/` output below).
+- Best-scoring palm per fixture (`cargo run --release --bin palm_test --
+  <fixture> --threshold 0.0`; max over all anchors):
+  - frame_000: 0.0251, frame_001: 0.0251, frame_002: 0.0251,
+    frame_003: 0.0250, frame_004: 0.0250, frame_005: 0.0250,
+    frame_006: 0.0250, frame_007: 0.0251, frame_008: 0.0250, frame_009: 0.0251
+- At the default 0.5 threshold: "no palm detected" on all 10 fixtures.
+- Representative annotated output: `assets/test/frame_001.png_detected.png`:
+  score 0.0251, bbox `x_min=-66.7 y_min=337.0 w=335.0 h=334.4`.
+- **Honesty note**: this sandbox has no display, so I could not visually
+  verify whether the annotated boxes land on hands — the reviewer should
+  inspect the `*_detected.png` files in `assets/test/` directly.
+
+### Acceptance (2a)
+
+1. `cargo check` — clean.
+2. `cargo run --release --bin inspect_models` — tool deleted after recording
+   signatures in NOTES.md (above).
+3. `cargo run --release --bin grab_frames -- --count 10` → 10 PNGs in
+   `assets/test/` (below).
+4. `cargo run --release --bin palm_test -- assets/test/frame_001.png` →
+   annotated PNG with a box (scores above; visual check is up to the
+   reviewer).
+5. `cargo test` — 2 unit tests pass:
+   `vision::palm_detector::tests::generate_anchors_matches_introspection`
+   and `vision::palm_detector::tests::nms_keeps_best_and_drops_overlaps`.
