@@ -17,6 +17,10 @@ toml = "1.2.2"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
+[features]
+default = []
+debug_preview = []
+
 [[bin]]
 name = "holox"
 path = "src/main.rs"

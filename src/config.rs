@@ -22,11 +22,14 @@ pub static CONFIG_ROOT: Lazy<PathBuf> = Lazy::new(config_root);
 
 /// User-facing settings. Defaults are written on first run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AppConfig {
     /// Display name of the application.
     pub app_name: String,
     /// Directory where calibration data is stored.
     pub calibration_dir: PathBuf,
+    /// Index of the V4L2 camera device used by the vision thread.
+    pub camera_index: i32,
 }
 
 impl Default for AppConfig {
@@ -34,6 +37,7 @@ impl Default for AppConfig {
         Self {
             app_name: "HoloX".to_string(),
             calibration_dir: config_root().join("calibration"),
+            camera_index: 0,
         }
     }
 }

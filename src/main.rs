@@ -13,11 +13,14 @@ fn main() -> Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    info!("HoloX scaffolding (phase 0)");
+    info!("HoloX (phase 1)");
 
-    let _config = config::load()?;
+    let config = config::load()?;
 
-    let _vision_rx = vision::spawn_vision_thread();
+    // Channel shared between the vision thread (Sender) and the Bevy side
+    // (Receiver), wrapped in the `VisionRx` resource.
+    let (tx, rx) = crossbeam_channel::unbounded::<vision::VisionMsg>();
+    let _vision_handle = vision::spawn_vision_thread(config.camera_index, tx);
 
-    app::run()
+    app::run(rx)
 }
