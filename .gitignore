@@ -1,1 +1,4 @@
 /target
+
+# Phase 2: downloaded ONNX models (see assets/models/README.md)
+assets/models/*.onnx

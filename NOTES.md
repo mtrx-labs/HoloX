@@ -71,7 +71,9 @@ controlled by hand gestures via a webcam (Linux, Vulkan rendering).
 - `set_window_title`: primary window title set to "HoloX"
   (`Query<&mut Window, With<PrimaryWindow>>`).
 - Logger: `main` initializes our `tracing_subscriber`; bevy's `LogPlugin` is
-  disabled to avoid the "Could not set global logger" error.
+  disabled to avoid the "Could not set global logger" error. Note: bevy's own
+  internal logs are now silent since the global logger is ours (will revisit
+  if it matters for a later phase).
 - Debug preview (feature-gated): `Frame.rgb` (RGB8, downscaled to 320x240) is
   filled on the vision thread; `preview_system` builds a `bevy::image::Image`
   and updates an `ImageNode` spawned bottom-right. Byte extraction uses the
